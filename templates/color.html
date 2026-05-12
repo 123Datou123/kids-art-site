@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Color It! · Kids Art Gallery</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="color-page">
+    <header class="color-header">
+        <a href="/" class="back-btn">← Back to Gallery</a>
+        <h1>🎨 Color Your Picture</h1>
+        <div class="color-header-actions">
+            <button id="download-lineart" class="btn-ghost" title="Save the blank line art for printing">
+                📄 Save Line Art
+            </button>
+            <button id="download-art" class="btn-primary" title="Save your finished artwork">
+                💾 Save My Art
+            </button>
+        </div>
+    </header>
+
+    <main class="color-main">
+        <!-- Toolbar (left side on desktop, top on mobile) -->
+        <aside class="toolbar">
+            <div class="tool-group">
+                <div class="tool-label">Tools</div>
+                <button class="tool-btn active" data-tool="brush" title="Brush">🖌️</button>
+                <button class="tool-btn" data-tool="fill" title="Fill bucket">🪣</button>
+                <button class="tool-btn" data-tool="eraser" title="Eraser">🧹</button>
+            </div>
+
+            <div class="tool-group">
+                <div class="tool-label">Brush Size</div>
+                <button class="size-btn" data-size="6" title="Small">●</button>
+                <button class="size-btn active" data-size="14" title="Medium">●</button>
+                <button class="size-btn" data-size="28" title="Large">●</button>
+            </div>
+
+            <div class="tool-group">
+                <div class="tool-label">Colors</div>
+                <div class="color-palette" id="color-palette">
+                    <!-- Filled by JS -->
+                </div>
+            </div>
+
+            <div class="tool-group">
+                <div class="tool-label">Actions</div>
+                <button id="undo-btn" class="action-btn" title="Undo">↶ Undo</button>
+                <button id="clear-btn" class="action-btn" title="Clear all colors">🗑️ Clear</button>
+            </div>
+        </aside>
+
+        <!-- Canvas area -->
+        <div class="canvas-wrap">
+            <div id="canvas-loading" class="canvas-loading">
+                <div class="spinner"></div>
+                <p>Loading your picture...</p>
+            </div>
+            <canvas id="color-canvas" style="display:none"></canvas>
+        </div>
+    </main>
+
+    <!-- Hidden data for JS -->
+    <script>
+        window.COLORING_IMAGE_URL = {{ image_url|tojson }};
+        window.COLORING_TITLE = {{ title|tojson }};
+        window.COLORING_STYLE = {{ style|tojson }};
+    </script>
+    <script src="{{ url_for('static', filename='js/color.js') }}"></script>
+</body>
+</html>

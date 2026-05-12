@@ -5,6 +5,10 @@ Uses OpenCV to convert a color image into a coloring-page-style line drawing.
 Two styles:
 - cartoon: clean closed lines, ideal for kids to color in
 - sketch: pencil sketch style, softer with more tonal variation
+
+Both styles can output:
+- White background (default, for printing)
+- Transparent background (for the in-browser coloring tool)
 """
 import cv2
 import numpy as np
@@ -13,7 +17,7 @@ from config import Config
 
 
 def _resize_if_needed(img: np.ndarray, max_size: int = None) -> np.ndarray:
-    """Downscale large images to keep processing fast."""
+    """Downscale large images to keep processing fast — but keep more detail than before."""
     max_size = max_size or Config.LINEART_MAX_SIZE
     h, w = img.shape[:2]
     longest = max(h, w)
@@ -43,59 +47,87 @@ def _encode_png(img: np.ndarray) -> bytes:
 
 def _cartoon_lineart(img: np.ndarray) -> np.ndarray:
     """
-    Coloring book style:
-    1. Bilateral filter (multiple passes) smooths colors to a more "cartoon" look
-    2. Grayscale + median blur further reduces noise
-    3. Adaptive threshold gives clean closed contours
-    4. Morphological close fills small gaps in the lines
-    """
-    smooth = img
-    for _ in range(2):
-        smooth = cv2.bilateralFilter(smooth, d=9, sigmaColor=75, sigmaSpace=75)
+    Coloring book style — IMPROVED VERSION.
 
+    Improvements over v1:
+    1. More bilateral filter passes (3 instead of 2) → cleaner regions
+    2. Larger kernel + Gaussian adaptive threshold → smoother, more connected lines
+    3. Morphology close + erode → lines slightly thicker and gaps filled
+    4. Result is much more "coloring book" looking
+    """
+    # Step 1: Heavy bilateral smoothing — preserves edges, flattens color regions
+    smooth = img
+    for _ in range(3):
+        smooth = cv2.bilateralFilter(smooth, d=9, sigmaColor=80, sigmaSpace=80)
+
+    # Step 2: To grayscale + median blur for noise removal
     gray = cv2.cvtColor(smooth, cv2.COLOR_BGR2GRAY)
     gray = cv2.medianBlur(gray, 5)
 
-    # Adaptive threshold — uses different thresholds across regions for consistent lines
+    # Step 3: Gaussian-weighted adaptive threshold — gives smoother lines than mean version
     edges = cv2.adaptiveThreshold(
         gray, 255,
-        cv2.ADAPTIVE_THRESH_MEAN_C,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY,
-        blockSize=9,
+        blockSize=11,   # Larger block → smoother regions, fewer broken bits
         C=7,
     )
 
+    # Step 4: Close small gaps in lines
     kernel = np.ones((2, 2), np.uint8)
     edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+
+    # Step 5: Make lines slightly thicker (erode white → expand black)
+    # This makes them more visible and easier for kids to stay inside while coloring
+    edges = cv2.erode(edges, kernel, iterations=1)
 
     return edges
 
 
 def _sketch_lineart(img: np.ndarray) -> np.ndarray:
     """
-    Pencil sketch style:
-    Classic "grayscale + invert + blur + color dodge" technique.
-    Produces a softer result with more tonal gradient.
+    Pencil sketch style — classic dodge technique.
+    Softer, more artistic feel with tonal gradients.
     """
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     inverted = 255 - gray
     blurred = cv2.GaussianBlur(inverted, (21, 21), sigmaX=0, sigmaY=0)
     inverted_blurred = 255 - blurred
-    # Color dodge: base / (255 - blend) * 255
     sketch = cv2.divide(gray, inverted_blurred, scale=256.0)
     return sketch
 
 
-def generate_lineart(image_bytes: bytes, style: str = "cartoon") -> bytes:
+def _to_transparent_rgba(img_gray: np.ndarray) -> np.ndarray:
     """
-    Main entry point: convert image bytes to line art PNG bytes.
+    Convert a grayscale line art (black lines on white background)
+    into an RGBA image with a transparent background.
+
+    Where the source is dark → opaque black.
+    Where the source is light → fully transparent.
+    Mid-tones get partial transparency for smooth edges.
+    """
+    h, w = img_gray.shape
+    rgba = np.zeros((h, w, 4), dtype=np.uint8)
+    # Alpha = how dark the pixel is (inverted grayscale)
+    alpha = 255 - img_gray
+    rgba[:, :, 3] = alpha
+    # RGB stays at 0 (black); transparency is controlled by alpha alone
+    return rgba
+
+
+def generate_lineart(image_bytes: bytes, style: str = "cartoon",
+                     transparent: bool = False) -> bytes:
+    """
+    Main entry: convert image bytes to line art PNG bytes.
 
     Args:
-        image_bytes: original image data
-        style: "cartoon" (coloring book) or "sketch" (pencil sketch)
+        image_bytes: raw input image
+        style: "cartoon" (default, coloring book) or "sketch" (pencil)
+        transparent: if True, output PNG has transparent background
+                     instead of white (for in-browser coloring overlay)
 
     Returns:
-        PNG bytes of the line art
+        PNG bytes
     """
     img = _decode_image(image_bytes)
     img = _resize_if_needed(img)
@@ -106,10 +138,12 @@ def generate_lineart(image_bytes: bytes, style: str = "cartoon") -> bytes:
     else:
         result = _cartoon_lineart(img)
 
+    if transparent:
+        result = _to_transparent_rgba(result)
+
     return _encode_png(result)
 
 
-# Available styles for the frontend — keep in sync when adding new styles
 AVAILABLE_STYLES = [
     {"value": "cartoon", "label": "Coloring Book (clean lines)"},
     {"value": "sketch", "label": "Pencil Sketch (soft)"},

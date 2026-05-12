@@ -1,8 +1,8 @@
-/* Kids Art Gallery — Frontend script */
+/* Kids Art Gallery — Home page script (v2) */
 (function () {
     "use strict";
 
-    // ============ DOM references ============
+    // ============ DOM ============
     const tabBtns = document.querySelectorAll(".tab-btn");
     const tabPanels = document.querySelectorAll(".tab-panel");
 
@@ -11,6 +11,8 @@
     const sourceSelect = document.getElementById("source-select");
     const statusEl = document.getElementById("status");
     const grid = document.getElementById("results-grid");
+    const loadMoreWrap = document.getElementById("load-more-wrap");
+    const loadMoreBtn = document.getElementById("load-more-btn");
 
     const genInput = document.getElementById("gen-input");
     const genBtn = document.getElementById("gen-btn");
@@ -26,10 +28,14 @@
     const modalStyle = document.getElementById("modal-style");
     const modalRegenerate = document.getElementById("modal-regenerate");
     const modalDownload = document.getElementById("modal-download");
+    const modalColor = document.getElementById("modal-color-online");
 
-    // Current source image URL in modal (used when switching style triggers regeneration)
+    // ============ State (for pagination) ============
+    let currentQuery = "";
+    let currentSource = "";
+    let currentPage = 1;
     let currentSourceImageUrl = null;
-    // Current coloring page blob URL in modal (used for download)
+    let currentSourceImageTitle = "";
     let currentLineartBlobUrl = null;
 
     // ============ Tab switching ============
@@ -37,27 +43,35 @@
         btn.addEventListener("click", () => {
             const target = btn.dataset.tab;
             tabBtns.forEach(b => b.classList.toggle("active", b === btn));
-            tabPanels.forEach(p => {
-                p.classList.toggle("active", p.id === "tab-" + target);
-            });
+            tabPanels.forEach(p => p.classList.toggle("active", p.id === "tab-" + target));
         });
     });
 
     // ============ Image search ============
-    async function doSearch() {
-        const query = searchInput.value.trim();
-        if (!query) {
-            setStatus("Please enter a search term", true);
-            return;
+    async function doSearch(append = false) {
+        if (!append) {
+            // New search
+            currentQuery = searchInput.value.trim();
+            currentSource = sourceSelect.value;
+            currentPage = 1;
+            grid.innerHTML = "";
+            hideLoadMore();
+            if (!currentQuery) {
+                setStatus("Please enter a search term", true);
+                return;
+            }
+            setStatus("Searching...");
+        } else {
+            currentPage++;
+            loadMoreBtn.disabled = true;
+            loadMoreBtn.textContent = "Loading...";
         }
 
-        setStatus("Searching...");
-        grid.innerHTML = "";
-
         const params = new URLSearchParams({
-            q: query,
-            source: sourceSelect.value,
+            q: currentQuery,
+            source: currentSource,
             count: 18,
+            page: currentPage,
         });
 
         try {
@@ -68,13 +82,29 @@
                 return;
             }
             if (data.images.length === 0) {
-                setStatus(`No results for "${query}". Try a different keyword.`, true);
+                if (!append) {
+                    setStatus(`No results for "${currentQuery}". Try a different keyword.`, true);
+                }
+                hideLoadMore();
                 return;
             }
-            setStatus(`Found ${data.count} images`);
-            renderResults(data.images);
+            if (!append) {
+                setStatus(`Showing ${data.count} images`);
+            } else {
+                setStatus(`Showing ${grid.children.length + data.images.length} images`);
+            }
+            appendResults(data.images);
+
+            if (data.has_more) {
+                showLoadMore();
+            } else {
+                hideLoadMore();
+            }
         } catch (e) {
             setStatus("Network error: " + e.message, true);
+        } finally {
+            loadMoreBtn.disabled = false;
+            loadMoreBtn.textContent = "Load More";
         }
     }
 
@@ -82,9 +112,14 @@
         statusEl.textContent = msg;
         statusEl.classList.toggle("error", !!isError);
     }
+    function showLoadMore() {
+        loadMoreWrap.style.display = "flex";
+    }
+    function hideLoadMore() {
+        loadMoreWrap.style.display = "none";
+    }
 
-    function renderResults(images) {
-        grid.innerHTML = "";
+    function appendResults(images) {
         const frag = document.createDocumentFragment();
         images.forEach(img => {
             const card = document.createElement("div");
@@ -96,13 +131,17 @@
                 <div class="card-body">
                     <div class="card-title">${escapeHtml(img.title || "Untitled")}</div>
                     <div class="card-actions">
-                        <button class="btn-download" data-action="download">Download</button>
-                        <button class="btn-lineart" data-action="lineart">To Line Art</button>
+                        <button class="btn-download" data-action="download">💾 Download</button>
+                        <button class="btn-color" data-action="color">🎨 Color it!</button>
                     </div>
+                    <button class="btn-text-link" data-action="lineart">Preview line art →</button>
                 </div>
             `;
             card.querySelector('[data-action="download"]').addEventListener("click", () => {
                 downloadOriginal(img);
+            });
+            card.querySelector('[data-action="color"]').addEventListener("click", () => {
+                openColorPage(img);
             });
             card.querySelector('[data-action="lineart"]').addEventListener("click", () => {
                 openLineartModal(img);
@@ -117,34 +156,42 @@
         const filename = sanitizeFilename(img.title || "image") + ".jpg";
         const dl = "/api/download?" +
             new URLSearchParams({ url: url, filename: filename }).toString();
-        // Trigger download by navigation
         window.location.href = dl;
     }
 
-    // ============ Line art modal ============
+    function openColorPage(img, style) {
+        const url = img.full_url || img.thumb_url;
+        const title = img.title || "picture";
+        const params = { url: url, title: title };
+        if (style) params.style = style;
+        const dest = "/color?" + new URLSearchParams(params).toString();
+        window.location.href = dest;
+    }
+
+    // ============ Line art preview modal ============
     function openLineartModal(img) {
         const url = img.full_url || img.thumb_url;
         currentSourceImageUrl = url;
+        currentSourceImageTitle = img.title || "picture";
         modalStyle.value = "cartoon";
         modal.classList.remove("hidden");
         requestLineart(url, modalStyle.value);
     }
-
     function closeModal() {
         modal.classList.add("hidden");
         modalImg.style.display = "none";
         modalLoading.style.display = "block";
+        modalLoading.innerHTML = '<div class="spinner"></div><p>Generating coloring page...</p>';
         if (currentLineartBlobUrl) {
             URL.revokeObjectURL(currentLineartBlobUrl);
             currentLineartBlobUrl = null;
         }
         currentSourceImageUrl = null;
     }
-
     async function requestLineart(url, style) {
         modalImg.style.display = "none";
         modalLoading.style.display = "block";
-        modalLoading.innerHTML = '<div class="spinner"></div><p>Generating coloring page, please wait...</p>';
+        modalLoading.innerHTML = '<div class="spinner"></div><p>Generating coloring page...</p>';
 
         try {
             const resp = await fetch("/api/lineart", {
@@ -170,32 +217,31 @@
     }
 
     modalClose.addEventListener("click", closeModal);
-    modal.addEventListener("click", (e) => {
-        if (e.target === modal) closeModal();
-    });
-
+    modal.addEventListener("click", e => { if (e.target === modal) closeModal(); });
     modalRegenerate.addEventListener("click", () => {
-        if (currentSourceImageUrl) {
-            requestLineart(currentSourceImageUrl, modalStyle.value);
-        }
+        if (currentSourceImageUrl) requestLineart(currentSourceImageUrl, modalStyle.value);
     });
     modalStyle.addEventListener("change", () => {
-        if (currentSourceImageUrl) {
-            requestLineart(currentSourceImageUrl, modalStyle.value);
-        }
+        if (currentSourceImageUrl) requestLineart(currentSourceImageUrl, modalStyle.value);
     });
-
     modalDownload.addEventListener("click", () => {
         if (!currentLineartBlobUrl) return;
         const a = document.createElement("a");
         a.href = currentLineartBlobUrl;
         a.download = "coloring_page.png";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    });
+    modalColor.addEventListener("click", () => {
+        if (!currentSourceImageUrl) return;
+        const dest = "/color?" + new URLSearchParams({
+            url: currentSourceImageUrl,
+            title: currentSourceImageTitle,
+            style: modalStyle.value,    // ← 把弹窗里选的 style 带过去
+        }).toString();
+        window.location.href = dest;
     });
 
-    // ============ Text → Coloring page ============
+    // ============ Text → coloring page ============
     async function generateFromText() {
         const query = genInput.value.trim();
         if (!query) {
@@ -203,18 +249,30 @@
             return;
         }
 
-        setGenStatus("Searching and generating...");
+        setGenStatus("Finding a matching image...");
         genResult.classList.remove("has-content");
         genResult.innerHTML = "";
 
         try {
-            const resp = await fetch("/api/lineart/from-text", {
+            // Step 1: find the source image
+            const findResp = await fetch("/api/lineart/find", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query: query, source: genSource.value }),
+            });
+            const findData = await findResp.json();
+            if (!findResp.ok) {
+                setGenStatus(findData.error || "Search failed", true);
+                return;
+            }
+
+            // Step 2: generate preview line art
+            setGenStatus("Generating line art preview...");
+            const resp = await fetch("/api/lineart", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    query: query,
-                    style: genStyle.value,
-                    source: genSource.value,
+                    url: findData.url, style: genStyle.value,
                 }),
             });
             if (!resp.ok) {
@@ -228,30 +286,42 @@
 
             const img = document.createElement("img");
             img.src = blobUrl;
-            img.alt = "Generated coloring page";
+            img.alt = "Generated line art";
 
             const row = document.createElement("div");
             row.className = "download-row";
+
+            const colorBtn = document.createElement("button");
+            colorBtn.textContent = "🎨 Color it Online!";
+            colorBtn.className = "primary";
+            colorBtn.addEventListener("click", () => {
+                window.location.href = "/color?" + new URLSearchParams({
+                    url: findData.url,
+                    title: findData.title || query,
+                    style: genStyle.value,    // ← 带上 Text 生成 Tab 里选的 style
+                }).toString();
+            });
+
             const dlBtn = document.createElement("button");
-            dlBtn.textContent = "💾 Download";
-            dlBtn.className = "primary";
+            dlBtn.textContent = "💾 Download Line Art";
             dlBtn.addEventListener("click", () => {
                 const a = document.createElement("a");
                 a.href = blobUrl;
-                a.download = `coloring_${sanitizeFilename(query)}.png`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
+                a.download = `lineart_${sanitizeFilename(query)}.png`;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
             });
+
             const regenBtn = document.createElement("button");
             regenBtn.textContent = "🎲 Try Another";
             regenBtn.addEventListener("click", generateFromText);
+
             row.appendChild(regenBtn);
             row.appendChild(dlBtn);
+            row.appendChild(colorBtn);
 
             const note = document.createElement("p");
             note.className = "source-note";
-            note.textContent = "Generated from the first matching image. Click 'Try Another' for a new result, or pick manually from the Search tab.";
+            note.textContent = "Generated from the first matching image. Try a different keyword for variety.";
 
             genResult.appendChild(img);
             genResult.appendChild(row);
@@ -262,31 +332,27 @@
             setGenStatus("Network error: " + e.message, true);
         }
     }
-
     function setGenStatus(msg, isError) {
         genStatus.textContent = msg;
         genStatus.classList.toggle("error", !!isError);
     }
 
-    // ============ Utilities ============
+    // ============ Utils ============
     function escapeHtml(str) {
         return String(str).replace(/[&<>"']/g, c => ({
             "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
         })[c]);
     }
-    function escapeAttr(str) { return escapeHtml(str); }
+    function escapeAttr(s) { return escapeHtml(s); }
     function sanitizeFilename(name) {
         return String(name).replace(/[\\/:*?"<>|]/g, "_").substring(0, 60).trim() || "image";
     }
 
-    // ============ Event bindings ============
-    searchBtn.addEventListener("click", doSearch);
-    searchInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") doSearch();
-    });
+    // ============ Bind ============
+    searchBtn.addEventListener("click", () => doSearch(false));
+    searchInput.addEventListener("keydown", e => { if (e.key === "Enter") doSearch(false); });
+    loadMoreBtn.addEventListener("click", () => doSearch(true));
 
     genBtn.addEventListener("click", generateFromText);
-    genInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") generateFromText();
-    });
+    genInput.addEventListener("keydown", e => { if (e.key === "Enter") generateFromText(); });
 })();
