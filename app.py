@@ -2,6 +2,8 @@
 儿童图片浏览与线稿生成网站
 入口文件 —— Flask 应用主程序
 """
+from dotenv import load_dotenv
+load_dotenv()
 import io
 import os
 import requests

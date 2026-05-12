@@ -1,6 +1,7 @@
 """
-图片源模块
-设计为插件式 —— 新增图片源时实现 ImageSource 接口并注册到 SOURCES 即可
+Image source module
+Plugin-style design — to add a new image source, implement the ImageSource interface
+and register it in SOURCES.
 """
 from abc import ABC, abstractmethod
 from typing import List, Dict, Optional
@@ -10,22 +11,22 @@ from config import Config
 
 
 class ImageSource(ABC):
-    """图片源抽象基类"""
+    """Abstract base class for image sources."""
     name: str = ""
 
     @abstractmethod
     def search(self, query: str, count: int = 12) -> List[Dict]:
         """
-        根据关键词搜索图片
-        返回结构示例:
+        Search for images by keyword.
+        Returns a list of dicts:
         [
             {
-                "id": "唯一标识",
-                "title": "图片标题",
-                "thumb_url": "缩略图 URL",
-                "full_url": "原图 URL",
-                "source": "数据源名称",
-                "page_url": "原始页面 URL（用于标注来源）",
+                "id": "unique id",
+                "title": "image title",
+                "thumb_url": "thumbnail URL",
+                "full_url": "full-size URL",
+                "source": "source name",
+                "page_url": "original page URL (for attribution)",
             },
             ...
         ]
@@ -35,8 +36,8 @@ class ImageSource(ABC):
 
 class WikimediaSource(ImageSource):
     """
-    Wikimedia Commons —— 维基共享资源
-    特点：无需 API 密钥；内容为公共领域或自由许可；以教育、自然类内容居多
+    Wikimedia Commons — free, no API key required.
+    Content is public domain or freely licensed; mostly educational and nature topics.
     """
     name = "wikimedia"
     API_URL = "https://commons.wikimedia.org/w/api.php"
@@ -46,13 +47,13 @@ class WikimediaSource(ImageSource):
             "action": "query",
             "format": "json",
             "generator": "search",
-            # 限定为位图（jpg/png 等），过滤掉 SVG / 音视频
+            # Restrict to bitmap images (jpg/png), exclude SVG/audio/video
             "gsrsearch": f"{query} filetype:bitmap",
-            "gsrnamespace": 6,           # File 命名空间
+            "gsrnamespace": 6,           # File namespace
             "gsrlimit": count,
             "prop": "imageinfo",
             "iiprop": "url|size|mime",
-            "iiurlwidth": 400,           # 缩略图宽度
+            "iiurlwidth": 400,           # Thumbnail width
         }
         headers = {"User-Agent": "KidsArtSite/1.0 (Educational; contact@example.com)"}
         resp = requests.get(self.API_URL, params=params, headers=headers, timeout=15)
@@ -61,7 +62,7 @@ class WikimediaSource(ImageSource):
 
         results: List[Dict] = []
         pages = data.get("query", {}).get("pages", {})
-        # 按 index 排序保持搜索相关性顺序
+        # Sort by search relevance index
         sorted_pages = sorted(
             pages.values(),
             key=lambda p: p.get("index", 9999)
@@ -72,7 +73,7 @@ class WikimediaSource(ImageSource):
                 continue
             info = info_list[0]
             mime = info.get("mime", "")
-            # 过滤非图片或 SVG
+            # Skip non-images and SVG
             if not mime.startswith("image/") or "svg" in mime:
                 continue
             title = page.get("title", "").replace("File:", "")
@@ -89,8 +90,9 @@ class WikimediaSource(ImageSource):
 
 class PixabaySource(ImageSource):
     """
-    Pixabay —— 免费高质量图片库
-    特点：需要免费 API 密钥（https://pixabay.com/api/docs/）；支持 safesearch，更适合儿童
+    Pixabay — free high-quality image library.
+    Requires a free API key (https://pixabay.com/api/docs/).
+    Has safesearch, making it suitable for kids.
     """
     name = "pixabay"
     API_URL = "https://pixabay.com/api/"
@@ -99,17 +101,18 @@ class PixabaySource(ImageSource):
         api_key = Config.PIXABAY_API_KEY
         if not api_key:
             raise RuntimeError(
-                "未配置 Pixabay API 密钥。请在 https://pixabay.com/api/docs/ "
-                "免费注册后设置 PIXABAY_API_KEY 环境变量。"
+                "Pixabay API key not configured. "
+                "Register for free at https://pixabay.com/api/docs/ "
+                "and set the PIXABAY_API_KEY environment variable."
             )
 
         params = {
             "key": api_key,
             "q": query,
             "image_type": "photo",
-            "safesearch": "true",     # 关键：开启安全搜索，过滤成人内容
+            "safesearch": "true",     # Enable safe search to filter adult content
             "per_page": max(3, min(count, 200)),
-            "lang": "zh",
+            "lang": "en",
         }
         resp = requests.get(self.API_URL, params=params, timeout=15)
         resp.raise_for_status()
@@ -128,8 +131,8 @@ class PixabaySource(ImageSource):
         return results
 
 
-# ============ 数据源注册表 ============
-# 想新增图片源 → 在此处注册即可
+# ============ Source registry ============
+# To add a new image source — register it here.
 SOURCES: Dict[str, ImageSource] = {
     WikimediaSource.name: WikimediaSource(),
     PixabaySource.name: PixabaySource(),
@@ -137,10 +140,10 @@ SOURCES: Dict[str, ImageSource] = {
 
 
 def get_source(name: str) -> Optional[ImageSource]:
-    """根据名称获取数据源实例"""
+    """Get a source instance by name."""
     return SOURCES.get(name)
 
 
 def list_sources() -> List[str]:
-    """列出所有可用数据源"""
+    """List all registered source names."""
     return list(SOURCES.keys())
