@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kids Art Gallery · Coloring Page Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <header class="site-header">
+        <div class="logo">
+            <span class="logo-icon">🎨</span>
+            <div class="logo-text">
+                <h1>Kids Art Gallery</h1>
+                <p>Find pictures, generate coloring pages, learn while playing</p>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Top tabs -->
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="browse">🔍 Search Images</button>
+            <button class="tab-btn" data-tab="generate">✏️ Text to Coloring Page</button>
+        </nav>
+
+        <!-- Tab 1: Image search -->
+        <section class="tab-panel active" id="tab-browse">
+            <div class="search-bar">
+                <input type="text"
+                       id="search-input"
+                       placeholder="Try: dinosaur, giraffe, flower, ocean, planet..."
+                       autocomplete="off">
+                <select id="source-select" title="Choose image source">
+                    <option value="wikimedia" {% if default_source == 'wikimedia' %}selected{% endif %}>
+                        Wikimedia (Free)
+                    </option>
+                    <option value="pixabay" {% if default_source == 'pixabay' %}selected{% endif %}>
+                        Pixabay (API Key needed)
+                    </option>
+                </select>
+                <button id="search-btn">Search</button>
+            </div>
+
+            <div class="hint">
+                💡 Tip: Wikimedia works best with English keywords. Switch to Pixabay for more language support and stricter safe-search.
+            </div>
+
+            <div id="status" class="status"></div>
+            <div id="results-grid" class="grid"></div>
+        </section>
+
+        <!-- Tab 2: Generate coloring page from text -->
+        <section class="tab-panel" id="tab-generate">
+            <div class="generate-form">
+                <label for="gen-input">Tell me what you want to draw:</label>
+                <input type="text"
+                       id="gen-input"
+                       placeholder="e.g. cute cat, dinosaur, butterfly, rocket">
+
+                <div class="form-row">
+                    <label>Style:
+                        <select id="gen-style">
+                            <option value="cartoon">Coloring Book (clean lines)</option>
+                            <option value="sketch">Pencil Sketch (soft)</option>
+                        </select>
+                    </label>
+                    <label>Source:
+                        <select id="gen-source">
+                            <option value="wikimedia" {% if default_source == 'wikimedia' %}selected{% endif %}>Wikimedia</option>
+                            <option value="pixabay" {% if default_source == 'pixabay' %}selected{% endif %}>Pixabay</option>
+                        </select>
+                    </label>
+                </div>
+
+                <button id="gen-btn">🎨 Generate Coloring Page</button>
+            </div>
+
+            <div id="gen-status" class="status"></div>
+            <div id="gen-result" class="lineart-result"></div>
+        </section>
+    </main>
+
+    <!-- Coloring page preview modal -->
+    <div id="lineart-modal" class="modal hidden">
+        <div class="modal-content">
+            <button class="modal-close" id="modal-close">×</button>
+            <h2>Coloring Page Preview</h2>
+            <div class="modal-body">
+                <div class="modal-loading" id="modal-loading">
+                    <div class="spinner"></div>
+                    <p>Generating coloring page, please wait...</p>
+                </div>
+                <img id="lineart-img" alt="Coloring page" style="display:none">
+            </div>
+            <div class="modal-actions">
+                <label>Style:
+                    <select id="modal-style">
+                        <option value="cartoon">Coloring Book</option>
+                        <option value="sketch">Pencil Sketch</option>
+                    </select>
+                </label>
+                <button id="modal-regenerate">Regenerate</button>
+                <button id="modal-download" class="primary">Download</button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="site-footer">
+        <p>Images are sourced from public libraries (Wikimedia Commons / Pixabay). Please follow their respective licenses.</p>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
